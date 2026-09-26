@@ -34,5 +34,10 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 
+# Python
+venv/
+__pycache__/
+*.pyc
+
 # Misc
 *.log
