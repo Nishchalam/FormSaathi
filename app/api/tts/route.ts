@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "tts_unavailable" }, { status: 503 });
   }
 
-  let body: { text?: string; language_code?: string };
+  let body: { text?: string };
   try {
     body = await req.json();
   } catch {
@@ -29,24 +29,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing_text" }, { status: 400 });
   }
 
-  const language_code = body.language_code ?? "en-IN";
-
-  // Bulbul v3 speaker names — "meera" is a female voice supported across all Indian languages
-  const SPEAKER: Record<string, string> = {
-    "en-IN": "meera",
-    "hi-IN": "meera",
-    "ta-IN": "meera",
-    "te-IN": "meera",
-    "kn-IN": "meera",
-    "ml-IN": "meera",
-    "bn-IN": "meera",
-    "gu-IN": "meera",
-    "mr-IN": "meera",
-    "od-IN": "meera",
-    "pa-IN": "meera",
-  };
-  const speaker = SPEAKER[language_code] ?? "meera";
-
   try {
     const res = await fetch("https://api.sarvam.ai/text-to-speech", {
       method: "POST",
@@ -56,8 +38,8 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         inputs: [text],
-        target_language_code: language_code,
-        speaker,
+        target_language_code: "en-IN",
+        speaker: "shubh",
         pace: 1.0,
         model: "bulbul:v3",
       }),

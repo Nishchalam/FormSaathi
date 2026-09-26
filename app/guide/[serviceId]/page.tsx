@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, use } from "react";
 import Link from "next/link";
 import { useLanguage, GUIDE_LABELS, SARVAM_LANG, SARVAM_STT_MODE } from "@/lib/lang";
 import type { Lang } from "@/lib/lang";
+// SARVAM_LANG kept for STT language codes; TTS is English-only (shubh speaker) for now
 import { getService } from "@/lib/services/data";
 import MicButton from "@/components/MicButton";
 
@@ -20,21 +21,6 @@ const ADVANCE_RE =
 
 function isAdvanceIntent(text: string): boolean {
   return ADVANCE_RE.test(text.trim());
-}
-
-async function translateText(text: string, lang: Lang): Promise<string> {
-  if (lang === "en") return text;
-  try {
-    const res = await fetch("/api/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, targetLang: lang }),
-    });
-    const data = await res.json();
-    return data.translated || text;
-  } catch {
-    return text;
-  }
 }
 
 function useAutoTts(onTtsEnded?: () => void) {
@@ -130,13 +116,10 @@ export default function GuidePage({ params }: { params: Promise<{ serviceId: str
   const [lastTranscript, setLastTranscript] = useState("");
 
   const autoListenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const translationCacheRef = useRef<Record<string, string>>({});
   const langRef = useRef<Lang>("en");
-  const mountedRef = useRef(false);
 
-  // Keep refs in sync for use inside stable callbacks
+  // Keep langRef in sync for use inside stable callbacks
   useEffect(() => { langRef.current = (mounted ? lang : "en") as Lang; }, [lang, mounted]);
-  useEffect(() => { mountedRef.current = mounted; }, [mounted]);
 
   const labels = GUIDE_LABELS[mounted ? lang : "en"];
 
@@ -204,9 +187,11 @@ export default function GuidePage({ params }: { params: Promise<{ serviceId: str
     setChatHistory([...newHistory, { role: "assistant", content: reply }]);
     setChatLoading(false);
 
-    // Model already replied in the user's language — TTS directly, no translation needed
-    const audio = await tts.load(reply, SARVAM_LANG[langRef.current]);
-    if (audio) await tts.play(audio);
+    // Only speak if the response is in English (TTS is English-only for now)
+    if (langRef.current === "en") {
+      const audio = await tts.load(reply);
+      if (audio) await tts.play(audio);
+    }
   }, [service, chatHistory, phase, stepIndex, clearAutoListenTimer, tts]);
 
   const handleVoiceTranscript = useCallback((text: string) => {
@@ -226,7 +211,7 @@ export default function GuidePage({ params }: { params: Promise<{ serviceId: str
     setVoiceState("idle");
   }, [clearAutoListenTimer]);
 
-  // Auto-TTS when phase/step/language changes
+  // Auto-TTS when phase/step changes
   useEffect(() => {
     if (!service || !mounted) return;
     let cancelled = false;
@@ -250,21 +235,7 @@ export default function GuidePage({ params }: { params: Promise<{ serviceId: str
       }
       if (cancelled) return;
 
-      const activeLang = lang as Lang;
-      const cacheKey = `${activeLang}:${text}`;
-      let textToSpeak = text;
-
-      if (activeLang !== "en") {
-        if (translationCacheRef.current[cacheKey]) {
-          textToSpeak = translationCacheRef.current[cacheKey];
-        } else {
-          textToSpeak = await translateText(text, activeLang);
-          if (!cancelled) translationCacheRef.current[cacheKey] = textToSpeak;
-        }
-      }
-
-      if (cancelled) return;
-      const audio = await tts.load(textToSpeak, SARVAM_LANG[activeLang]);
+      const audio = await tts.load(text);
       if (audio && !cancelled) await tts.play(audio);
     };
 
@@ -274,7 +245,7 @@ export default function GuidePage({ params }: { params: Promise<{ serviceId: str
       tts.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serviceId, phase, stepIndex, lang, mounted]);
+  }, [serviceId, phase, stepIndex, mounted]);
 
   // Reset on service change
   useEffect(() => {
